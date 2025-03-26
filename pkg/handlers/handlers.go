@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/labels"
@@ -19,8 +20,9 @@ import (
 
 const ArgoCDNamespace = "argocd"
 
-type ClusterConfig struct {
-	TLSClientConfig struct {
+type ClusterSecretConfig struct {
+	ExecProviderConfig interface{} `json:"execProviderConfig,omitempty"`
+	TLSClientConfig    struct {
 		Insecure bool   `json:"insecure"`
 		CAData   string `json:"caData"`
 	} `json:"tlsClientConfig"`
@@ -111,16 +113,23 @@ func getRemoteClusterNamespaces(ctx echo.Context, cl client.Reader, nsList *core
 		return err
 	}
 
-	var configObj ClusterConfig
+	var configObj ClusterSecretConfig
 	if err := json.Unmarshal(caBytes, &configObj); err != nil {
 		ctx.Logger().Errorf("failed to unmarshal secret config: %v", err)
+		return err
+	}
+
+	// Decode the inner CA data from base64.
+	decodedCA, err := base64.StdEncoding.DecodeString(configObj.TLSClientConfig.CAData)
+	if err != nil {
+		ctx.Logger().Errorf("Failed to decode CA data: %v", err)
 		return err
 	}
 
 	remoteCfg := &rest.Config{
 		Host: string(clusterEndpoint),
 		TLSClientConfig: rest.TLSClientConfig{
-			CAData: []byte(configObj.TLSClientConfig.CAData),
+			CAData: decodedCA,
 		},
 	}
 
