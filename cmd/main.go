@@ -60,7 +60,7 @@ func getKeyPath() string {
 
 func main() {
 	e := echo.New()
-	e.Logger.SetLevel(log.INFO)
+	e.Logger.SetLevel(log.DEBUG)
 
 	e.Pre(middleware.RemoveTrailingSlash())
 	e.Use(middleware.RequestID())
