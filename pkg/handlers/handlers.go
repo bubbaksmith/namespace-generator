@@ -142,9 +142,10 @@ func getRemoteClusterNamespaces(ctx echo.Context, cl client.Reader, nsList *core
 	}
 	kubeCfg.AuthInfos[Remote] = &clientcmdapi.AuthInfo{
 		Exec: &clientcmdapi.ExecConfig{
-			APIVersion: configObj.ExecProviderConfig.APIVersion,
-			Command:    configObj.ExecProviderConfig.Command,
-			Args:       configObj.ExecProviderConfig.Args,
+			APIVersion:      configObj.ExecProviderConfig.APIVersion,
+			Command:         configObj.ExecProviderConfig.Command,
+			Args:            configObj.ExecProviderConfig.Args,
+			InteractiveMode: "IfAvailable",
 		},
 	}
 	kubeCfg.Contexts[Remote] = &clientcmdapi.Context{
