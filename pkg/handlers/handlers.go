@@ -5,9 +5,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/oauth2/google"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/client-go/rest"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -29,11 +29,16 @@ type ClusterSecretConfig struct {
 		APIVersion string   `json:"apiVersion"`
 		Command    string   `json:"command"`
 		Args       []string `json:"args"`
-	} `json:"execProviderConfig"`
+	} `json:"execProviderConfig,omitempty"`
 	TLSClientConfig struct {
 		Insecure bool   `json:"insecure"`
 		CAData   string `json:"caData"`
 	} `json:"tlsClientConfig"`
+}
+
+var defaultGCPScopes = []string{
+	"https://www.googleapis.com/auth/cloud-platform",
+	"https://www.googleapis.com/auth/userinfo.email",
 }
 
 type K8sClientFactory func(echo.Logger) (client.Reader, error)
@@ -134,33 +139,26 @@ func getRemoteClusterNamespaces(ctx echo.Context, cl client.Reader, nsList *core
 		return err
 	}
 
-	// Build an in-memory kubeconfig with an Exec block.
-	kubeCfg := clientcmdapi.NewConfig()
-	kubeCfg.Clusters[Remote] = &clientcmdapi.Cluster{
-		Server:                   string(clusterEndpoint),
-		CertificateAuthorityData: decodedCA,
-	}
-	kubeCfg.AuthInfos[Remote] = &clientcmdapi.AuthInfo{
-		Exec: &clientcmdapi.ExecConfig{
-			APIVersion:      configObj.ExecProviderConfig.APIVersion,
-			Command:         configObj.ExecProviderConfig.Command,
-			Args:            configObj.ExecProviderConfig.Args,
-			InteractiveMode: "IfAvailable",
+	remoteCfg := &rest.Config{
+		Host: string(clusterEndpoint),
+		TLSClientConfig: rest.TLSClientConfig{
+			CAData: decodedCA,
 		},
 	}
-	kubeCfg.Contexts[Remote] = &clientcmdapi.Context{
-		Cluster:  Remote,
-		AuthInfo: Remote,
-	}
-	kubeCfg.CurrentContext = Remote
 
-	// Build a rest.Config from the kubeconfig.
-	clientConfig := clientcmd.NewDefaultClientConfig(*kubeCfg, &clientcmd.ConfigOverrides{})
-	remoteCfg, err := clientConfig.ClientConfig()
+	// Use the Google Cloud Workload Identity to get a token.
+	// This code is similar to what argocd-k8s-auth uses.
+	cred, err := google.FindDefaultCredentials(context.Background(), defaultGCPScopes...)
 	if err != nil {
-		ctx.Logger().Errorf("Failed to build REST config from exec kubeconfig: %v", err)
+		ctx.Logger().Errorf("failed to get default credentials: %v", err)
 		return err
 	}
+	t, err := cred.TokenSource.Token()
+	if err != nil {
+		ctx.Logger().Errorf("failed to get token: %v", err)
+		return err
+	}
+	remoteCfg.BearerToken = t.AccessToken
 
 	// Create a remote Kubernetes client using controller-runtime.
 	remoteClient, err := client.New(remoteCfg, client.Options{})
