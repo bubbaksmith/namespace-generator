@@ -47,7 +47,7 @@ spec:
     spec:
       serviceAccountName: namespace-generator
       containers:
-      - image: quay.io/gbenhaim0/namespace-generator:v10
+      - image: quay.io/brianksmith/namespace-generator:latest
         env:
           - name: NS_GEN_USE_HTTP
             value: "true"
