@@ -274,3 +274,10 @@ clean:
 down:
 	kind delete clusters ${K8S_LOCAL_CLUSTER_NAME}
 	kind delete clusters ${K8S_REMOTE_CLUSTER_NAME}
+
+reset:
+	kubectl --context platform -n argocd delete -k manifests/ || true
+	sleep 3
+	kubectl --context platform -n argocd apply -k manifests/
+	kubectl --context platform -n argocd wait --for=condition=available --timeout=600s deployment/namespace-generator
+	kubectl --context platform -n argocd logs -f deploy/namespace-generator

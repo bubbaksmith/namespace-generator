@@ -64,7 +64,12 @@ func main() {
 
 	e.Pre(middleware.RemoveTrailingSlash())
 	e.Use(middleware.RequestID())
-	e.Use(middleware.Logger())
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Skipper: func(c echo.Context) bool {
+			// Skip logging health probe requests.
+			return c.Request().URL.Path == "/health"
+		},
+	}))
 	e.Use(middleware.Recover())
 
 	keyPath := getKeyPath()
@@ -98,5 +103,4 @@ func main() {
 			),
 		)
 	}
-
 }

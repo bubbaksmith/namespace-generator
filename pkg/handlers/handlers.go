@@ -6,7 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -18,11 +19,18 @@ import (
 	"github.com/konflux-ci/namespace-generator/pkg/api/v1alpha1"
 )
 
-const ArgoCDNamespace = "argocd"
+const (
+	ArgoCDNamespace = "argocd"
+	Remote          = "remote"
+)
 
 type ClusterSecretConfig struct {
-	ExecProviderConfig interface{} `json:"execProviderConfig,omitempty"`
-	TLSClientConfig    struct {
+	ExecProviderConfig struct {
+		APIVersion string   `json:"apiVersion"`
+		Command    string   `json:"command"`
+		Args       []string `json:"args"`
+	} `json:"execProviderConfig"`
+	TLSClientConfig struct {
 		Insecure bool   `json:"insecure"`
 		CAData   string `json:"caData"`
 	} `json:"tlsClientConfig"`
@@ -126,11 +134,31 @@ func getRemoteClusterNamespaces(ctx echo.Context, cl client.Reader, nsList *core
 		return err
 	}
 
-	remoteCfg := &rest.Config{
-		Host: string(clusterEndpoint),
-		TLSClientConfig: rest.TLSClientConfig{
-			CAData: decodedCA,
+	// Build an in-memory kubeconfig with an Exec block.
+	kubeCfg := clientcmdapi.NewConfig()
+	kubeCfg.Clusters[Remote] = &clientcmdapi.Cluster{
+		Server:                   string(clusterEndpoint),
+		CertificateAuthorityData: decodedCA,
+	}
+	kubeCfg.AuthInfos[Remote] = &clientcmdapi.AuthInfo{
+		Exec: &clientcmdapi.ExecConfig{
+			APIVersion: configObj.ExecProviderConfig.APIVersion,
+			Command:    configObj.ExecProviderConfig.Command,
+			Args:       configObj.ExecProviderConfig.Args,
 		},
+	}
+	kubeCfg.Contexts[Remote] = &clientcmdapi.Context{
+		Cluster:  Remote,
+		AuthInfo: Remote,
+	}
+	kubeCfg.CurrentContext = Remote
+
+	// Build a rest.Config from the kubeconfig.
+	clientConfig := clientcmd.NewDefaultClientConfig(*kubeCfg, &clientcmd.ConfigOverrides{})
+	remoteCfg, err := clientConfig.ClientConfig()
+	if err != nil {
+		ctx.Logger().Errorf("Failed to build REST config from exec kubeconfig: %v", err)
+		return err
 	}
 
 	// Create a remote Kubernetes client using controller-runtime.
