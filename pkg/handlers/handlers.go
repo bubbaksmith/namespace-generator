@@ -170,7 +170,7 @@ func getRemoteClusterNamespaces(ctx echo.Context, cl client.Reader, nsList *core
 	// List namespaces from the remote cluster, filtered by the given label selector.
 	err = remoteClient.List(context.Background(), nsList, &client.ListOptions{LabelSelector: selector})
 	if err != nil {
-		ctx.Logger().Errorf("Failed to list namespaces on remote cluster: %v", err)
+		ctx.Logger().Errorf("Failed to list namespaces on remote cluster: %v with error: %v", string(clusterEndpoint), err)
 		return err
 	}
 
