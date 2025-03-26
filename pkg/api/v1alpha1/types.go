@@ -6,6 +6,7 @@ import (
 
 type InParameters struct {
 	LabelSelector metav1.LabelSelector `json:"labelSelector"`
+	ClusterName   string               `json:"name,omitempty"`
 }
 
 type Input struct {

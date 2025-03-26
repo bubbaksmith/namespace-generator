@@ -201,3 +201,76 @@ GOBIN=$(LOCALBIN) go install $${package} ;\
 mv "$$(echo "$(1)" | sed "s/-$(3)$$//")" $(1) ;\
 }
 endef
+
+##@ Kind
+.PHONY: kind kind-up deploy-argocd deploy-namespace-generator register-remote1 apply-argocd-app port-forward clean down
+
+K8S_LOCAL_CLUSTER_NAME := argocd-playground
+K8S_REMOTE_CLUSTER_NAME := remote1
+ARGOCD_NAMESPACE := argocd
+KUBE_CONTEXT := kind-$(K8S_LOCAL_CLUSTER_NAME)
+KUBECTL := kubectl --context=$(KUBE_CONTEXT) -n $(ARGOCD_NAMESPACE)
+
+kind: $(KIND_CONFIG) kind-up deploy-argocd deploy-namespace-generator apply-argocd-app port-forward
+
+kind-up:
+	kind get clusters | grep ${K8S_LOCAL_CLUSTER_NAME} || kind create cluster --name ${K8S_LOCAL_CLUSTER_NAME} --config ./hack/kind/local.yaml
+	kind get clusters | grep ${K8S_REMOTE_CLUSTER_NAME} || kind create cluster --name ${K8S_REMOTE_CLUSTER_NAME} --config ./hack/kind/remote.yaml
+
+deploy-argocd:
+	@echo "Deploying ArgoCD to the Kind cluster..."
+	@kubectl --context $(KUBE_CONTEXT) create namespace argocd 2>/dev/null || true
+	$(KUBECTL) apply -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+	@echo "Waiting for Argo CD server deployment to be available..."
+	$(KUBECTL) wait --for=condition=available --timeout=600s deployment/argocd-server
+
+deploy-namespace-generator:
+	@echo "Deploying Namespace Generator to the Kind cluster..."
+	$(KUBECTL) apply -k manifests
+	$(KUBECTL) wait --for=condition=available --timeout=600s deployment/namespace-generator
+
+REMOTE1_CLUSTER_NAME := kind-remote1
+REMOTE1_SERVER ?= $(shell kubectl config view --raw -o jsonpath='{.clusters[?(@.name=="$(REMOTE1_CLUSTER_NAME)")].cluster.server}')
+REMOTE1_CA_DATA ?= $(shell kubectl config view --raw -o jsonpath='{.clusters[?(@.name=="$(REMOTE1_CLUSTER_NAME)")].cluster.certificate-authority-data}')
+
+register-remote1:
+	@echo "Registering remote cluster 'remote1' in the argocd namespace on cluster $(ARGOCD_CONTEXT)..."
+	@echo "Using server: $(REMOTE1_SERVER)"
+	$(KUBECTL) create secret generic remote1 \
+  	  --from-literal=name=remote1 \
+  	  --from-literal=server="$(REMOTE1_SERVER)" \
+  	  --from-literal=config='{"tlsClientConfig": {"insecure": false, "caData": "$(REMOTE1_CA_DATA)"}}'
+
+apply-argocd-app:
+	@echo "Applying ArgoCD application..."
+	$(KUBECTL) apply -f example/appset.yaml
+
+port-forward:
+	@echo "Login credentials:"
+	@echo "Username: admin"
+	@echo "Password: $(shell kubectl --context $(KUBE_CONTEXT) -n $(ARGOCD_NAMESPACE) get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)"
+	@echo "Port forwarding ArgoCD server. Access the UI at http://localhost:8080"
+	@if [ -f .argocd-pf.pid ]; then \
+	  PID=$$(cat .argocd-pf.pid); \
+	  if kill -0 $$PID 2>/dev/null; then \
+		echo "Port-forward already running with PID $$PID. Skipping..."; \
+		exit 0; \
+	  else \
+		echo "Stale PID file found. Removing..."; \
+		rm -f .argocd-pf.pid; \
+	  fi; \
+	fi
+	@echo "Starting port-forward for ArgoCD server on http://localhost:8080..."
+	@kubectl --context $(KUBE_CONTEXT) port-forward svc/argocd-server -n argocd 8080:443 > /dev/null 2>&1 & echo $$! > .argocd-pf.pid
+
+clean:
+	@if [ -f .argocd-pf.pid ]; then \
+	  echo "Killing port-forward process with PID $$(cat .argocd-pf.pid)..."; \
+	  kill $$(cat .argocd-pf.pid) && rm -f .argocd-pf.pid; \
+	else \
+	  echo "No port-forward process found."; \
+	fi
+
+down:
+	kind delete clusters ${K8S_LOCAL_CLUSTER_NAME}
+	kind delete clusters ${K8S_REMOTE_CLUSTER_NAME}

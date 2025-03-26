@@ -61,12 +61,14 @@ func getKeyPath() string {
 func main() {
 	e := echo.New()
 	e.Logger.SetLevel(log.INFO)
+
 	e.Pre(middleware.RemoveTrailingSlash())
 	e.Use(middleware.RequestID())
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
 	keyPath := getKeyPath()
+
 	api := e.Group("/api")
 	api.Use(middleware.KeyAuth(func(key string, c echo.Context) (bool, error) {
 		validKey, err := os.ReadFile(keyPath)
@@ -76,9 +78,9 @@ func main() {
 		return subtle.ConstantTimeCompare([]byte(key), validKey) == 1, nil
 	}))
 
-	gph := handlers.NewGetParamsHandler(getK8sClient)
+	getParamsHandler := handlers.NewGetParamsHandler(getK8sClient)
 
-	api.POST("/v1/getparams.execute", gph.GetParams)
+	api.POST("/v1/getparams.execute", getParamsHandler.GetParams)
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
