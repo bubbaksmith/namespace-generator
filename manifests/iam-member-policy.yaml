@@ -1,0 +1,10 @@
+ apiVersion: iam.cnrm.cloud.google.com/v1beta1
+ kind: IAMPolicyMember
+ metadata:
+   name: namespace-generator-workload-identity
+ spec:
+   member: serviceaccount:platform-287919.svc.id.goog[argocd/namespace-generator]
+   role: roles/iam.workloadIdentityUser
+   resourceRef:
+     kind: Project
+     external: platform-287919

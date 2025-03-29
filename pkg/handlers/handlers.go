@@ -139,15 +139,8 @@ func getRemoteClusterNamespaces(ctx echo.Context, cl client.Reader, nsList *core
 		return err
 	}
 
-	remoteCfg := &rest.Config{
-		Host: string(clusterEndpoint),
-		TLSClientConfig: rest.TLSClientConfig{
-			CAData: decodedCA,
-		},
-	}
-
 	// Use the Google Cloud Workload Identity to get a token.
-	// This code is similar to what argocd-k8s-auth uses.
+	// This code is exactly what argocd-k8s-auth uses.
 	cred, err := google.FindDefaultCredentials(context.Background(), defaultGCPScopes...)
 	if err != nil {
 		ctx.Logger().Errorf("failed to get default credentials: %v", err)
@@ -158,7 +151,14 @@ func getRemoteClusterNamespaces(ctx echo.Context, cl client.Reader, nsList *core
 		ctx.Logger().Errorf("failed to get token: %v", err)
 		return err
 	}
-	remoteCfg.BearerToken = t.AccessToken
+
+	remoteCfg := &rest.Config{
+		Host: string(clusterEndpoint),
+		TLSClientConfig: rest.TLSClientConfig{
+			CAData: decodedCA,
+		},
+		BearerToken: t.AccessToken,
+	}
 
 	// Create a remote Kubernetes client using controller-runtime.
 	remoteClient, err := client.New(remoteCfg, client.Options{})

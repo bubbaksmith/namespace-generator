@@ -281,3 +281,6 @@ reset:
 	kubectl --context platform -n argocd apply -k manifests/
 	kubectl --context platform -n argocd wait --for=condition=available --timeout=600s deployment/namespace-generator
 	kubectl --context platform -n argocd logs -f deploy/namespace-generator
+
+logs:
+	kubectl --context platform -n argocd logs -f deploy/namespace-generator
