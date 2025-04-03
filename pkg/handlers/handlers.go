@@ -75,11 +75,12 @@ func (paramsHandler *GetParamsHandler) GetParams(ctx echo.Context) error {
 
 	nsList := &corev1.NamespaceList{}
 
-	if req.Input.Parameters.ClusterName == "" {
+	clusterName := req.Input.Parameters.ClusterName
+	if clusterName == "" {
 		ctx.Logger().Debug("No cluster name found in request. Searching for local cluster namespaces")
 		err = getLocalNamespaces(ctx, localClient, nsList, selector)
 	} else {
-		ctx.Logger().Debug(fmt.Sprintf("Found secret name in request '%s'", req.Input.Parameters.ClusterName))
+		ctx.Logger().Debug(fmt.Sprintf("Found secret name in request '%s'", clusterName))
 		err = getRemoteClusterNamespaces(ctx, localClient, nsList, selector, req)
 	}
 	if err != nil {
@@ -95,6 +96,8 @@ func (paramsHandler *GetParamsHandler) GetParams(ctx echo.Context) error {
 			},
 		)
 	}
+
+	ctx.Logger().Debugf("Cluster Name: '%s' - Found Namespaces: %+v", clusterName, nsList.Items)
 
 	return ctx.JSON(http.StatusOK, generateResponse)
 }
