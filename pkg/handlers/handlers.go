@@ -97,7 +97,7 @@ func (paramsHandler *GetParamsHandler) GetParams(ctx echo.Context) error {
 		)
 	}
 
-	ctx.Logger().Debugf("Cluster Name: '%s' - Found Namespaces: %+v", clusterName, nsList.Items)
+	ctx.Logger().Debugf("Cluster Name: '%s' - Response: %+v", clusterName, generateResponse)
 
 	return ctx.JSON(http.StatusOK, generateResponse)
 }
